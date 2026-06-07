@@ -1,0 +1,12 @@
+# Compiled WebAssembly (бұл автоматты генерация, репоға кірмейді)
+*.wasm
+
+# Go build cache
+*.exe
+*.test
+*.prof
+
+# Sensitive keys - ЕШҚАШАН GitHub-қа жіберме!
+.near-credentials/
+*.pem
+*.json.key
