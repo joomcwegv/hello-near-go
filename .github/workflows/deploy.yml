@@ -6,7 +6,7 @@ on:
 
 jobs:
   build-and-deploy:
-    runs-on: ubuntu-22.04
+    runs-on: windows-latest
 
     steps:
     - name: Checkout code
@@ -15,17 +15,18 @@ jobs:
     - name: Setup Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.22'
+        go-version: '1.26.3'
 
     - name: Setup TinyGo
       uses: acifani/setup-tinygo@v2
       with:
-        tinygo-version: '0.31.2'
+        tinygo-version: '0.41.1'
 
     - name: Install NEAR CLI
-      run: curl --proto '=https' --tlsv1.2 -LsSf https://github.com/near/near-cli-rs/releases/latest/download/near-cli-rs-installer.sh | sh
+      run: npm install -g near-cli-rs@latest
 
     - name: Configure NEAR Credentials
+      shell: bash
       run: |
         mkdir -p ~/.near-credentials/testnet
         cat << 'EOF' > ~/.near-credentials/testnet/auctiontest2026.testnet.json
@@ -34,11 +35,8 @@ jobs:
 
     - name: Build Smart Contract
       working-directory: ./auction
+      shell: bash
       run: |
-        export GOROOT=$(go env GOROOT)
-        echo "Using GOROOT: $GOROOT"
-        go version
-        tinygo env
         go mod tidy
         tinygo build -size short -no-debug -panic=trap -scheduler=none -gc=leaking -o auction.wasm -target wasm-unknown ./main.go
         echo "Build successful! WASM size:"
@@ -46,5 +44,6 @@ jobs:
 
     - name: Deploy to NEAR Testnet
       working-directory: ./auction
+      shell: bash
       run: |
         near contract deploy auctiontest2026.testnet use-file auction.wasm without-init-call network-config testnet sign-with-legacy-keychain send
