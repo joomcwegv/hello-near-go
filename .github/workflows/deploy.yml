@@ -6,25 +6,24 @@ on:
 
 jobs:
   build-and-deploy:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Setup Go
-      uses: actions/setup-go@v5
-      with:
-        go-version: '1.24'
-
-    - name: Install TinyGo 0.36.0
+    - name: Install near-go CLI
       run: |
-        wget https://github.com/tinygo-org/tinygo/releases/download/v0.36.0/tinygo0.36.0.linux-amd64.tar.gz
-        sudo tar -C /usr/local -xzf tinygo0.36.0.linux-amd64.tar.gz
-        echo "/usr/local/tinygo/bin" >> $GITHUB_PATH
+        curl -LO https://github.com/vlmoon99/near-cli-go/releases/latest/download/install.sh && bash install.sh && rm install.sh
+        echo "$HOME/bin" >> $GITHUB_PATH
 
     - name: Install NEAR CLI
       run: curl --proto '=https' --tlsv1.2 -LsSf https://github.com/near/near-cli-rs/releases/latest/download/near-cli-rs-installer.sh | sh
+
+    - name: Verify tools
+      run: |
+        near-go version
+        near --version
 
     - name: Configure NEAR Credentials
       shell: bash
@@ -38,13 +37,12 @@ jobs:
       working-directory: ./auction
       shell: bash
       run: |
-        go mod tidy
-        tinygo build -size short -no-debug -panic=trap -scheduler=none -gc=leaking -o auction.wasm -target wasm-unknown ./main.go
-        echo "Build successful! WASM size:"
-        ls -la auction.wasm
+        near-go build
+        echo "Build successful! WASM file:"
+        ls -la main.wasm
 
     - name: Deploy to NEAR Testnet
       working-directory: ./auction
       shell: bash
       run: |
-        near contract deploy auctiontest2026.testnet use-file auction.wasm without-init-call network-config testnet sign-with-legacy-keychain send
+        near contract deploy auctiontest2026.testnet use-file main.wasm without-init-call network-config testnet sign-with-legacy-keychain send
