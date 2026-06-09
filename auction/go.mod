@@ -1,6 +1,6 @@
 module auction
 
-go 1.20
+go 1.23.7
 
 require github.com/vlmoon99/near-sdk-go v0.1.1
 
