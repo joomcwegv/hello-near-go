@@ -1,8 +1,8 @@
 module auction
 
-go 1.25.4
+go 1.20
 
-require github.com/vlmoon99/near-sdk-go v0.1.0
+require github.com/vlmoon99/near-sdk-go v0.1.1
 
 require (
 	github.com/mr-tron/base58 v1.2.0 // indirect
