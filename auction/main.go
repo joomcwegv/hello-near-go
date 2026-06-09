@@ -3,114 +3,130 @@ package main
 import (
 	"strconv"
 
-	"encoding/json"
-	"github.com/vlmoon99/near-sdk-go/collections"
 	"github.com/vlmoon99/near-sdk-go/env"
 	"github.com/vlmoon99/near-sdk-go/types"
 )
 
-type AuctionState struct {
-	Data *collections.LookupMap[string, string]
+// Helper function to read from storage
+func storageRead(key string) string {
+	data, err := env.StorageRead([]byte(key))
+	if err != nil {
+		return ""
+	}
+	return string(data)
 }
 
-func GetState() AuctionState {
-	return AuctionState{
-		Data: collections.NewLookupMap[string, string]("a_"),
-	}
+// Helper function to write to storage
+func storageWrite(key string, value string) {
+	env.StorageWrite([]byte(key), []byte(value))
 }
 
 //go:export init
 func Init() {
+	// Simple manual JSON parsing to avoid heavy reflection in tinygo
 	options := types.ContractInputOptions{IsRawBytes: false}
 	contractInput, _, _ := env.ContractInput(options)
-	var args struct {
-		EndTime    string `json:"end_time"`
-		Auctioneer string `json:"auctioneer"`
-	}
-	if err := json.Unmarshal(contractInput, &args); err != nil {
-		env.PanicStr("Failed to parse input")
-	}
+	inputStr := string(contractInput)
 
-	endTimeStr := args.EndTime
-	if endTimeStr == "" {
+	// Naive manual extraction for vibecoder demo
+	// We expect input like: {"end_time":"123","auctioneer":"abc"}
+	endTime := extractJsonValue(inputStr, "end_time")
+	auctioneer := extractJsonValue(inputStr, "auctioneer")
+
+	if endTime == "" {
 		env.PanicStr("Missing end_time")
 	}
-	
-	auctioneer := args.Auctioneer
 	if auctioneer == "" {
 		env.PanicStr("Missing auctioneer")
 	}
 
-	state := GetState()
-	state.Data.Insert("end_time", endTimeStr)
-	state.Data.Insert("auctioneer", auctioneer)
-	state.Data.Insert("highest_bid", "0")
-	state.Data.Insert("highest_bidder", "")
-	state.Data.Insert("claimed", "false")
+	storageWrite("end_time", endTime)
+	storageWrite("auctioneer", auctioneer)
+	storageWrite("highest_bid", "0")
+	storageWrite("highest_bidder", "")
+	storageWrite("claimed", "false")
 
-	env.LogString("Auction initialized. Auctioneer: " + auctioneer + ", End Time: " + endTimeStr)
+	env.LogString("Auction initialized. Auctioneer: " + auctioneer + ", End Time: " + endTime)
+}
+
+// Naive JSON value extractor to avoid encoding/json reflection
+func extractJsonValue(jsonStr string, key string) string {
+	searchKey := `"` + key + `":"`
+	startIdx := -1
+	for i := 0; i < len(jsonStr)-len(searchKey); i++ {
+		if jsonStr[i:i+len(searchKey)] == searchKey {
+			startIdx = i + len(searchKey)
+			break
+		}
+	}
+	if startIdx == -1 {
+		return ""
+	}
+	endIdx := startIdx
+	for i := startIdx; i < len(jsonStr); i++ {
+		if jsonStr[i] == '"' {
+			endIdx = i
+			break
+		}
+	}
+	return jsonStr[startIdx:endIdx]
 }
 
 //go:export bid
 func Bid() {
-	state := GetState()
-
-	// 1. Check if auction is still active
-	endTimeStr, _ := state.Data.Get("end_time")
+	endTimeStr := storageRead("end_time")
 	endTime, _ := strconv.ParseUint(endTimeStr, 10, 64)
-	
+
 	currentTime := env.GetBlockTimeMs() * 1000000
 	if currentTime >= endTime {
 		env.PanicStr("Auction has already ended")
 	}
 
-	// 2. Check if bid is high enough
 	attachedDeposit, _ := env.GetAttachedDeposit()
 
-	highestBidStr, _ := state.Data.Get("highest_bid")
+	highestBidStr := storageRead("highest_bid")
+	if highestBidStr == "" {
+		highestBidStr = "0"
+	}
 	highestBid, _ := types.U128FromString(highestBidStr)
 
 	if attachedDeposit.Cmp(highestBid) <= 0 {
 		env.PanicStr("Deposit must be higher than current highest bid")
 	}
 
-	// 3. Refund the previous highest bidder
-	previousBidder, _ := state.Data.Get("highest_bidder")
+	previousBidder := storageRead("highest_bidder")
 	if previousBidder != "" {
 		promiseIndex := env.PromiseBatchCreate([]byte(previousBidder))
 		env.PromiseBatchActionTransfer(promiseIndex, highestBid)
 	}
 
-	// 4. Update state with new highest bidder
 	accountId, _ := env.GetPredecessorAccountID()
-	state.Data.Insert("highest_bid", attachedDeposit.String())
-	state.Data.Insert("highest_bidder", accountId)
+	storageWrite("highest_bid", attachedDeposit.String())
+	storageWrite("highest_bidder", accountId)
 
 	env.LogString("New highest bid: " + attachedDeposit.String() + " by " + accountId)
 }
 
 //go:export claim
 func Claim() {
-	state := GetState()
-
-	// 1. Check if auction has ended
-	endTimeStr, _ := state.Data.Get("end_time")
+	endTimeStr := storageRead("end_time")
 	endTime, _ := strconv.ParseUint(endTimeStr, 10, 64)
-	
+
 	currentTime := env.GetBlockTimeMs() * 1000000
 	if currentTime < endTime {
 		env.PanicStr("Auction is still active")
 	}
 
-	// 2. Check if already claimed
-	claimed, _ := state.Data.Get("claimed")
+	claimed := storageRead("claimed")
 	if claimed == "true" {
 		env.PanicStr("Proceeds have already been claimed")
 	}
 
-	// 3. Transfer highest bid to auctioneer
-	auctioneer, _ := state.Data.Get("auctioneer")
-	highestBidStr, _ := state.Data.Get("highest_bid")
+	auctioneer := storageRead("auctioneer")
+	highestBidStr := storageRead("highest_bid")
+	if highestBidStr == "" {
+		highestBidStr = "0"
+	}
 	highestBid, _ := types.U128FromString(highestBidStr)
 
 	if highestBidStr != "0" {
@@ -118,16 +134,14 @@ func Claim() {
 		env.PromiseBatchActionTransfer(promiseIndex, highestBid)
 	}
 
-	// 4. Mark as claimed
-	state.Data.Insert("claimed", "true")
+	storageWrite("claimed", "true")
 	env.LogString("Proceeds claimed by auctioneer")
 }
 
 //go:export get_highest_bid
 func GetHighestBid() {
-	state := GetState()
-	bidStr, _ := state.Data.Get("highest_bid")
-	bidderStr, _ := state.Data.Get("highest_bidder")
+	bidStr := storageRead("highest_bid")
+	bidderStr := storageRead("highest_bidder")
 
 	response := `{"bidder": "` + bidderStr + `", "amount": "` + bidStr + `"}`
 	env.ContractValueReturn([]byte(response))
@@ -135,23 +149,17 @@ func GetHighestBid() {
 
 //go:export get_auction_end_time
 func GetAuctionEndTime() {
-	state := GetState()
-	endTime, _ := state.Data.Get("end_time")
-	env.ContractValueReturn([]byte(endTime))
+	env.ContractValueReturn([]byte(storageRead("end_time")))
 }
 
 //go:export get_auctioneer
 func GetAuctioneer() {
-	state := GetState()
-	auctioneer, _ := state.Data.Get("auctioneer")
-	env.ContractValueReturn([]byte(auctioneer))
+	env.ContractValueReturn([]byte(storageRead("auctioneer")))
 }
 
 //go:export get_claimed
 func GetClaimed() {
-	state := GetState()
-	claimed, _ := state.Data.Get("claimed")
-	env.ContractValueReturn([]byte(claimed))
+	env.ContractValueReturn([]byte(storageRead("claimed")))
 }
 
 func main() {}
