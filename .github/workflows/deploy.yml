@@ -10,34 +10,33 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
-    - name: Setup Go
-      uses: actions/setup-go@v4
+    - name: Setup Go 1.22
+      uses: actions/setup-go@v5
       with:
         go-version: '1.22'
 
-    - name: Setup TinyGo
-      uses: acifani/setup-tinygo@v2
-      with:
-        tinygo-version: '0.31.2'
+    - name: Install TinyGo
+      run: |
+        wget https://github.com/tinygo-org/tinygo/releases/download/v0.31.2/tinygo_0.31.2_amd64.deb
+        sudo dpkg -i tinygo_0.31.2_amd64.deb
 
     - name: Install NEAR CLI
-      run: curl --proto '=https' --tlsv1.2 -LsSf https://github.com/near/near-cli-rs/releases/latest/download/near-cli-rs-installer.sh | sh
-
-    - name: Compile Smart Contract
-      working-directory: ./auction
-      run: |
-        go mod tidy
-        tinygo build -size short -no-debug -panic=trap -scheduler=none -gc=leaking -o auction.wasm -target wasm-unknown ./main.go
+      run: npm install -g near-cli-rs@latest
 
     - name: Configure NEAR Credentials
       run: |
         mkdir -p ~/.near-credentials/testnet
         echo '${{ secrets.NEAR_CREDENTIALS }}' > ~/.near-credentials/testnet/auctiontest2026.testnet.json
 
+    - name: Build Smart Contract
+      working-directory: ./auction
+      run: |
+        go mod tidy
+        tinygo build -size short -no-debug -panic=trap -scheduler=none -gc=leaking -o auction.wasm -target wasm-unknown ./main.go
+
     - name: Deploy to NEAR Testnet
       working-directory: ./auction
       run: |
-        # Deploy without initializing (we already initialized it manually once)
         near contract deploy auctiontest2026.testnet use-file auction.wasm without-init-call network-config testnet sign-with-legacy-keychain send
