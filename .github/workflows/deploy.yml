@@ -29,7 +29,9 @@ jobs:
     - name: Configure NEAR Credentials
       run: |
         mkdir -p ~/.near-credentials/testnet
-        echo '${{ secrets.NEAR_CREDENTIALS }}' > ~/.near-credentials/testnet/auctiontest2026.testnet.json
+        cat << 'EOF' > ~/.near-credentials/testnet/auctiontest2026.testnet.json
+        ${{ secrets.NEAR_CREDENTIALS }}
+        EOF
 
     - name: Build Smart Contract
       working-directory: ./auction
