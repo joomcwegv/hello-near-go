@@ -35,6 +35,10 @@ jobs:
     - name: Build Smart Contract
       working-directory: ./auction
       run: |
+        export GOROOT=$(go env GOROOT)
+        echo "Using GOROOT: $GOROOT"
+        go version
+        tinygo env
         go mod tidy
         tinygo build -size short -no-debug -panic=trap -scheduler=none -gc=leaking -o auction.wasm -target wasm-unknown ./main.go
         echo "Build successful! WASM size:"
