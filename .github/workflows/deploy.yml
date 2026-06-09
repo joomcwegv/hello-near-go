@@ -23,7 +23,7 @@ jobs:
         tinygo-version: '0.31.2'
 
     - name: Install NEAR CLI
-      run: npm install -g near-cli-rs@latest
+      run: curl --proto '=https' --tlsv1.2 -LsSf https://github.com/near/near-cli-rs/releases/latest/download/near-cli-rs-installer.sh | sh
 
     - name: Configure NEAR Credentials
       run: |
